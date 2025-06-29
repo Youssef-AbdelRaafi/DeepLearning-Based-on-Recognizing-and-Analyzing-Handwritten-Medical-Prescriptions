@@ -1,0 +1,69 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./PrescriptoAI
+      dockerfile: Dockerfile
+    environment:
+      - ASPNETCORE_ENVIRONMENT=${ASPNETCORE_ENVIRONMENT:-Development}
+      - ASPNETCORE_URLS=http://+:8080
+      - ConnectionStrings__DefaultConnection=Server=db;Database=PrescriptionAnalyzerDb;User Id=sa;Password=${SQL_SERVER_PASSWORD};TrustServerCertificate=True
+      - Jwt__Issuer=PrescriptoAI
+      - Jwt__Audience=PrescriptoAIUsers
+      - RoboflowConfig__ApiKey=${ROBOFLOW_API_KEY}
+    ports:
+      - "5035:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./try3-main
+      dockerfile: Dockerfile.dev
+    ports:
+      - "4200:4200"
+    depends_on:
+      - backend
+    networks:
+      - app-network
+    volumes:
+      - ./try3-main:/app
+      - /app/node_modules
+    environment:
+      - CHOKIDAR_USEPOLLING=true
+    command: ["ng", "serve", "--project", "bais", "--host", "0.0.0.0", "--port", "4200"]
+    restart: unless-stopped
+
+  db:
+    build:
+      context: .
+      dockerfile: Dockerfile.sqlserver.dockerfile
+    environment:
+      - ACCEPT_EULA=Y
+      - MSSQL_SA_PASSWORD=${SQL_SERVER_PASSWORD}
+      - MSSQL_PID=Express
+    ports:
+      - "1433:1433"
+    volumes:
+      - mssql-data:/var/opt/mssql
+    networks:
+      - app-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P $MSSQL_SA_PASSWORD -Q 'SELECT 1'"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 90s
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  mssql-data:
